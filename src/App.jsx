@@ -57,7 +57,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof window !== 'undefined' && window.__app_id ? window.__app_id : 'default-app-id';
 
 // --- Data Models ---
 
@@ -664,6 +663,17 @@ export default function JobPrepLog() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [recommendedSubRole, setRecommendedSubRole] = useState(null);
 
+  // Feedback Survey States
+  const [feedbackSurvey, setFeedbackSurvey] = useState({
+    overall: 0,        // 전체 만족도 (1-5)
+    ui: 0,             // UI/UX 만족도
+    accuracy: 0,       // 진단 정확도
+    usefulness: 0,     // 활동추천 유용성
+    recommend: 0,      // 추천 의향
+    feedback: ''       // 자유 피드백
+  });
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -762,6 +772,9 @@ export default function JobPrepLog() {
   };
 
   const finishTest = async () => {
+    // Save scenario test results
+    saveUserData('SCENARIO_COMPLETE');
+    
     safeNavigate(() => {
       setCurrentStep('AI_CHAT');
       startAiChat(); // Go to Job Matching chat after scenario
@@ -802,6 +815,15 @@ export default function JobPrepLog() {
 
     setRecommendedSubRole(bestSubRole);
 
+    // Save job selection to Firebase
+    setTimeout(() => {
+      saveUserData('JOB_SELECTED', { 
+        selectedJobKey: jobKey, 
+        selectedJobName: job.name,
+        recommendedSubRoleName: bestSubRole.name 
+      });
+    }, 100);
+
     setTimeout(() => {
       setChatHistory(prev => [...prev, { sender: 'Bot', text: `분석 중입니다...` }]);
       setTimeout(() => {
@@ -825,20 +847,9 @@ export default function JobPrepLog() {
   };
 
   const finishMatching = async () => {
-    if (user) {
-      try {
-        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'jobData', 'result'), {
-          profile,
-          surveyResults,
-          scores,
-          selectedJob: selectedJob?.id,
-          recommendedSubRole,
-          createdAt: serverTimestamp()
-        }, { merge: true });
-      } catch (e) {
-        console.error("Save error:", e);
-      }
-    }
+    // Save final matching data
+    saveUserData('MATCHING_COMPLETE');
+    
     safeNavigate(() => {
       setCurrentStep('RESULT');
     }, 1500);
@@ -866,6 +877,9 @@ export default function JobPrepLog() {
       return;
     }
 
+    // Save basic info to Firebase
+    saveUserData('BASIC_INFO_COMPLETE');
+
     setSpecStep(1);
     setSurveyPage(0);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -888,7 +902,8 @@ export default function JobPrepLog() {
       setUnanswered([]);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      // After Survey, go to Scenario
+      // After Survey, save and go to Scenario
+      saveUserData('SURVEY_COMPLETE');
       safeNavigate(() => {
         setCurrentStep('SCENARIO_TEST');
         startScenario();
@@ -908,6 +923,63 @@ export default function JobPrepLog() {
   useEffect(() => {
     scrollToBottom();
   }, [chatHistory, isTyping]);
+
+  // --- Save Data to Firebase ---
+  const saveUserData = async (step, additionalData = {}) => {
+    if (!user) return;
+    try {
+      const baseData = {
+        step,
+        profile,
+        surveyResults,
+        scores,
+        selectedJob: selectedJob?.id || null,
+        recommendedSubRole: recommendedSubRole?.name || null,
+        updatedAt: serverTimestamp()
+      };
+      
+      await setDoc(doc(db, 'users', user.uid), {
+        ...baseData,
+        ...additionalData,
+        createdAt: serverTimestamp()
+      }, { merge: true });
+      
+      console.log(`Data saved at step: ${step}`);
+    } catch (e) {
+      console.error("Save error:", e);
+    }
+  };
+
+  // --- Submit Feedback Survey ---
+  const submitFeedbackSurvey = async () => {
+    if (!user) return;
+    
+    // Validation
+    if (feedbackSurvey.overall === 0) {
+      alert("전체 만족도를 선택해주세요.");
+      return;
+    }
+    
+    try {
+      await setDoc(doc(db, 'feedback', user.uid), {
+        ...feedbackSurvey,
+        profile: {
+          name: profile.name,
+          university: profile.university,
+          major: profile.major
+        },
+        selectedJob: selectedJob?.name || null,
+        recommendedSubRole: recommendedSubRole?.name || null,
+        createdAt: serverTimestamp()
+      });
+      
+      setFeedbackSubmitted(true);
+      console.log("Feedback submitted successfully");
+    } catch (e) {
+      console.error("Feedback save error:", e);
+      alert("피드백 저장 중 오류가 발생했습니다.");
+    }
+  };
 
   // --- Helpers for Result ---
   const getResults = () => {
@@ -1830,8 +1902,80 @@ export default function JobPrepLog() {
                     </div>
                   )}
 
+                  {/* Feedback Survey Section */}
+                  <div className="bg-gradient-to-br from-[#2F5233] to-[#1a2e1f] rounded-[2.5rem] p-10 mt-12 text-white">
+                    <h3 className="text-2xl font-extrabold mb-2 flex items-center gap-3">
+                      📝 서비스 피드백
+                    </h3>
+                    <p className="text-white/70 mb-8">취준로그를 이용해 주셔서 감사합니다. 더 나은 서비스를 위해 피드백을 남겨주세요!</p>
+                    
+                    {feedbackSubmitted ? (
+                      <div className="bg-white/10 rounded-2xl p-8 text-center">
+                        <div className="text-5xl mb-4">🎉</div>
+                        <h4 className="text-xl font-bold mb-2">피드백이 제출되었습니다!</h4>
+                        <p className="text-white/70">소중한 의견 감사합니다. 더 나은 서비스로 보답하겠습니다.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Rating Questions */}
+                        {[
+                          { key: 'overall', label: '전체 만족도', desc: '취준로그 서비스 전반에 대한 만족도' },
+                          { key: 'ui', label: 'UI/UX 만족도', desc: '디자인과 사용 편의성' },
+                          { key: 'accuracy', label: '진단 정확도', desc: '역량 진단 및 성향 분석의 정확성' },
+                          { key: 'usefulness', label: '활동 추천 유용성', desc: '추천된 활동들의 유용성' },
+                          { key: 'recommend', label: '추천 의향', desc: '주변에 이 서비스를 추천할 의향' }
+                        ].map((item) => (
+                          <div key={item.key} className="bg-white/10 rounded-2xl p-5">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                              <div>
+                                <h4 className="font-bold text-lg">{item.label}</h4>
+                                <p className="text-white/60 text-sm">{item.desc}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                {[1, 2, 3, 4, 5].map((rating) => (
+                                  <button
+                                    key={rating}
+                                    onClick={() => setFeedbackSurvey(prev => ({ ...prev, [item.key]: rating }))}
+                                    className={`w-12 h-12 rounded-xl font-bold text-lg transition-all ${
+                                      feedbackSurvey[item.key] === rating
+                                        ? 'bg-white text-[#2F5233] scale-110 shadow-lg'
+                                        : 'bg-white/20 hover:bg-white/30'
+                                    }`}
+                                  >
+                                    {rating}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Free Feedback */}
+                        <div className="bg-white/10 rounded-2xl p-5">
+                          <h4 className="font-bold text-lg mb-2">자유 의견</h4>
+                          <p className="text-white/60 text-sm mb-4">개선 사항이나 추가 의견이 있다면 자유롭게 작성해주세요</p>
+                          <textarea
+                            value={feedbackSurvey.feedback}
+                            onChange={(e) => setFeedbackSurvey(prev => ({ ...prev, feedback: e.target.value }))}
+                            placeholder="예: 직무별 더 세분화된 활동 추천이 있으면 좋겠어요..."
+                            className="w-full h-32 bg-white/20 rounded-xl p-4 text-white placeholder-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-white/50"
+                          />
+                        </div>
+
+                        {/* Submit Button */}
+                        <button
+                          onClick={submitFeedbackSurvey}
+                          className="w-full py-4 bg-white text-[#2F5233] font-bold text-lg rounded-xl hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Check className="w-5 h-5" />
+                          피드백 제출하기
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Footer Action */}
-                  <div className="flex justify-center gap-4 mt-20 pb-10">
+                  <div className="flex justify-center gap-4 mt-12 pb-10">
                     <button onClick={() => window.location.reload()} className="group px-8 py-4 bg-[#111] text-white rounded-full hover:bg-[#2F5233] transition-all font-bold text-lg shadow-xl shadow-gray-200 flex items-center gap-2">
                       <RotateCcw className="w-5 h-5 group-hover:-rotate-180 transition-transform duration-500" /> 
                       다시 진단하기
