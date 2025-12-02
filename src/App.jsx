@@ -656,6 +656,7 @@ export default function JobPrepLog() {
   const [scenarioIndex, setScenarioIndex] = useState(0);
   const [chatHistory, setChatHistory] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [canSelect, setCanSelect] = useState(false); // 선택 가능 여부
   const chatEndRef = useRef(null);
   const [resultTab, setResultTab] = useState('detail'); // 'summary', 'detail'
 
@@ -736,27 +737,42 @@ export default function JobPrepLog() {
     const scenario = SCENARIOS[index];
     if (!scenario) return;
 
+    // 대화 시작 시 선택 비활성화
+    setCanSelect(false);
+    setIsTyping(true);
+
     if (index === 0) {
       setChatHistory([{ type: 'divider', text: new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }) }]);
     }
 
     let delay = 0;
+    const totalMessages = scenario.context.length;
+    
     scenario.context.forEach((msg, i) => {
       delay += 800;
       setTimeout(() => {
         setChatHistory(prev => [...prev, { ...msg, id: `msg-${index}-${i}` }]);
         scrollToBottom();
+        
+        // 마지막 메시지가 표시되면 선택 활성화
+        if (i === totalMessages - 1) {
+          setTimeout(() => {
+            setIsTyping(false);
+            setCanSelect(true);
+          }, 500);
+        }
       }, delay);
     });
-
-    setTimeout(() => {
-      setIsTyping(true);
-      scrollToBottom();
-    }, delay + 500);
   };
 
   const handleOptionSelect = (option) => {
-    setIsTyping(false);
+    // 선택 불가 상태면 무시
+    if (!canSelect) return;
+    
+    // 선택 후 즉시 비활성화
+    setCanSelect(false);
+    setIsTyping(true);
+    
     setChatHistory(prev => [...prev, { sender: '나', text: option.text }]);
     setScores(prev => ({ ...prev, [option.type]: prev[option.type] + 1 }));
 
@@ -1253,7 +1269,7 @@ export default function JobPrepLog() {
                   }
                   return <ChatBubble key={idx} msg={msg} />;
                 })}
-                {isTyping && (
+                {isTyping && !canSelect && (
                   <div className="flex w-full justify-start mb-4 animate-pulse">
                     <div className="bg-white text-gray-400 px-6 py-3.5 rounded-2xl rounded-tl-sm text-[15px] shadow-md border border-gray-100">
                       <div className="flex gap-1">
@@ -1272,32 +1288,32 @@ export default function JobPrepLog() {
             <div className="bg-white/90 backdrop-blur-xl border-t border-gray-200/50 px-6 py-6 shadow-2xl">
               <div className="max-w-4xl mx-auto">
                 <div className="flex items-center justify-center gap-2 mb-5">
-                  <MousePointer2 className={`w-4 h-4 ${isTyping ? 'text-gray-400' : 'text-[#2F5233]'}`} />
-                  <span className={`font-bold text-sm ${isTyping ? 'text-gray-400' : 'text-[#111]'}`}>
-                    {isTyping ? '대화를 기다려주세요...' : '선택지를 골라주세요'}
+                  <MousePointer2 className={`w-4 h-4 ${!canSelect ? 'text-gray-400' : 'text-[#2F5233]'}`} />
+                  <span className={`font-bold text-sm ${!canSelect ? 'text-gray-400' : 'text-[#111]'}`}>
+                    {!canSelect ? '대화를 기다려주세요...' : '선택지를 골라주세요'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {SCENARIOS[scenarioIndex].options.map((option, idx) => (
                     <button
                       key={idx}
-                      onClick={() => !isTyping && handleOptionSelect(option)}
-                      disabled={isTyping}
+                      onClick={() => handleOptionSelect(option)}
+                      disabled={!canSelect}
                       className={`relative flex items-start gap-4 p-5 border-2 rounded-2xl transition-all duration-300 text-left shadow-sm ${
-                        isTyping 
+                        !canSelect 
                           ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-50' 
-                          : 'bg-white hover:bg-gradient-to-br hover:from-[#E8F5E9] hover:to-white border-gray-200 hover:border-[#2F5233] group hover:shadow-xl hover:shadow-[#2F5233]/10 hover:-translate-y-1'
+                          : 'bg-white hover:bg-gradient-to-br hover:from-[#E8F5E9] hover:to-white border-gray-200 hover:border-[#2F5233] group hover:shadow-xl hover:shadow-[#2F5233]/10 hover:-translate-y-1 cursor-pointer'
                       }`}
                     >
                       <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm transition-all duration-300 shadow-sm ${
-                        isTyping 
+                        !canSelect 
                           ? 'bg-gray-200 text-gray-400' 
                           : 'bg-gradient-to-br from-gray-100 to-gray-50 group-hover:from-[#2F5233] group-hover:to-[#1a2e1f] text-gray-600 group-hover:text-white'
                       }`}>
                         {idx + 1}
                       </div>
-                      <span className={`flex-1 font-medium text-[15px] leading-relaxed pt-0.5 ${isTyping ? 'text-gray-400' : 'text-[#111]'}`}>{option.text}</span>
-                      <ChevronRight className={`flex-shrink-0 w-5 h-5 mt-1 ${isTyping ? 'text-gray-300' : 'text-gray-300 group-hover:text-[#2F5233]'} transition-colors`} />
+                      <span className={`flex-1 font-medium text-[15px] leading-relaxed pt-0.5 ${!canSelect ? 'text-gray-400' : 'text-[#111]'}`}>{option.text}</span>
+                      <ChevronRight className={`flex-shrink-0 w-5 h-5 mt-1 ${!canSelect ? 'text-gray-300' : 'text-gray-300 group-hover:text-[#2F5233]'} transition-colors`} />
                     </button>
                   ))}
                 </div>
