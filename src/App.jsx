@@ -30,7 +30,8 @@ import {
   Bot,
   FileText,
   BarChart2,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { 
   Radar, 
@@ -896,8 +897,17 @@ export default function JobPrepLog() {
   };
 
   const scrollToBottom = () => {
-    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => {
+      if (chatEndRef.current) {
+        chatEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 100);
   };
+
+  // Auto scroll when chat history changes
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatHistory, isTyping]);
 
   // --- Helpers for Result ---
   const getResults = () => {
@@ -1157,7 +1167,7 @@ export default function JobPrepLog() {
             </div>
 
             {/* Chat Area - Modern style */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 scroll-smooth" ref={chatEndRef}>
+            <div className="flex-1 overflow-y-auto px-6 py-6 scroll-smooth">
               <div className="max-w-4xl mx-auto space-y-4">
                 {chatHistory.map((msg, idx) => {
                   if (msg.type === 'divider') {
@@ -1182,7 +1192,7 @@ export default function JobPrepLog() {
                     </div>
                   </div>
                 )}
-                <div className="h-80"></div>
+                <div ref={chatEndRef} className="h-4"></div>
               </div>
             </div>
 
@@ -1190,21 +1200,32 @@ export default function JobPrepLog() {
             <div className="bg-white/90 backdrop-blur-xl border-t border-gray-200/50 px-6 py-6 shadow-2xl">
               <div className="max-w-4xl mx-auto">
                 <div className="flex items-center justify-center gap-2 mb-5">
-                  <MousePointer2 className="w-4 h-4 text-[#2F5233]" />
-                  <span className="text-[#111] font-bold text-sm">선택지를 골라주세요</span>
+                  <MousePointer2 className={`w-4 h-4 ${isTyping ? 'text-gray-400' : 'text-[#2F5233]'}`} />
+                  <span className={`font-bold text-sm ${isTyping ? 'text-gray-400' : 'text-[#111]'}`}>
+                    {isTyping ? '대화를 기다려주세요...' : '선택지를 골라주세요'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {SCENARIOS[scenarioIndex].options.map((option, idx) => (
                     <button
                       key={idx}
-                      onClick={() => handleOptionSelect(option)}
-                      className="relative flex items-start gap-4 p-5 bg-white hover:bg-gradient-to-br hover:from-[#E8F5E9] hover:to-white border-2 border-gray-200 hover:border-[#2F5233] rounded-2xl transition-all duration-300 group text-left shadow-sm hover:shadow-xl hover:shadow-[#2F5233]/10 hover:-translate-y-1"
+                      onClick={() => !isTyping && handleOptionSelect(option)}
+                      disabled={isTyping}
+                      className={`relative flex items-start gap-4 p-5 border-2 rounded-2xl transition-all duration-300 text-left shadow-sm ${
+                        isTyping 
+                          ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-50' 
+                          : 'bg-white hover:bg-gradient-to-br hover:from-[#E8F5E9] hover:to-white border-gray-200 hover:border-[#2F5233] group hover:shadow-xl hover:shadow-[#2F5233]/10 hover:-translate-y-1'
+                      }`}
                     >
-                      <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 group-hover:from-[#2F5233] group-hover:to-[#1a2e1f] flex items-center justify-center font-bold text-sm text-gray-600 group-hover:text-white transition-all duration-300 shadow-sm">
+                      <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm transition-all duration-300 shadow-sm ${
+                        isTyping 
+                          ? 'bg-gray-200 text-gray-400' 
+                          : 'bg-gradient-to-br from-gray-100 to-gray-50 group-hover:from-[#2F5233] group-hover:to-[#1a2e1f] text-gray-600 group-hover:text-white'
+                      }`}>
                         {idx + 1}
                       </div>
-                      <span className="flex-1 text-[#111] font-medium text-[15px] leading-relaxed pt-0.5">{option.text}</span>
-                      <ChevronRight className="flex-shrink-0 w-5 h-5 text-gray-300 group-hover:text-[#2F5233] transition-colors mt-1" />
+                      <span className={`flex-1 font-medium text-[15px] leading-relaxed pt-0.5 ${isTyping ? 'text-gray-400' : 'text-[#111]'}`}>{option.text}</span>
+                      <ChevronRight className={`flex-shrink-0 w-5 h-5 mt-1 ${isTyping ? 'text-gray-300' : 'text-gray-300 group-hover:text-[#2F5233]'} transition-colors`} />
                     </button>
                   ))}
                 </div>
@@ -1216,16 +1237,52 @@ export default function JobPrepLog() {
         {/* VIEW: AI CHAT (Job Matching) */}
         {currentStep === 'AI_CHAT' && (
           <div className="animate-fade-in max-w-4xl mx-auto px-4">
+            {/* Quick Navigation - Only show if job is already selected */}
+            {selectedJob && (
+              <div className="flex items-center justify-end gap-2 mb-4">
+                <span className="text-sm text-gray-500 mr-2">바로가기:</span>
+                <button 
+                  onClick={() => setCurrentStep('ACTIVITY_RECOMMEND')} 
+                  className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-bold text-[#111] transition-colors"
+                >
+                  🎯 활동추천
+                </button>
+                <button 
+                  onClick={() => setCurrentStep('RESULT')} 
+                  className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-bold text-[#111] transition-colors"
+                >
+                  📊 역량리포트
+                </button>
+              </div>
+            )}
+            
             <div className="bg-white border border-gray-100 rounded-[2.5rem] shadow-2xl shadow-gray-200/50 overflow-hidden h-[75vh] min-h-[500px] flex flex-col relative">
               {/* Header */}
-              <div className="px-8 py-6 border-b border-gray-100 bg-white/90 backdrop-blur sticky top-0 z-10 flex items-center gap-4">
-                 <div className="w-12 h-12 bg-[#111] rounded-2xl flex items-center justify-center shadow-lg shadow-gray-200">
-                   <Bot className="w-6 h-6 text-white" />
-                 </div>
-                 <div>
-                   <span className="font-extrabold text-[#111] text-lg block">AI 커리어 분석관</span>
-                   <span className="text-sm text-gray-400 font-medium">직무 적합도 매칭 중...</span>
-                 </div>
+              <div className="px-8 py-6 border-b border-gray-100 bg-white/90 backdrop-blur sticky top-0 z-10 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                   <div className="w-12 h-12 bg-[#111] rounded-2xl flex items-center justify-center shadow-lg shadow-gray-200">
+                     <Bot className="w-6 h-6 text-white" />
+                   </div>
+                   <div>
+                     <span className="font-extrabold text-[#111] text-lg block">AI 커리어 분석관</span>
+                     <span className="text-sm text-gray-400 font-medium">
+                       {selectedJob ? `${selectedJob.name} 직무 매칭 완료` : '직무 적합도 매칭 중...'}
+                     </span>
+                   </div>
+                </div>
+                {selectedJob && (
+                  <button 
+                    onClick={() => {
+                      setSelectedJob(null);
+                      setRecommendedSubRole(null);
+                      startAiChat();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700 transition-colors flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    다른 직무 선택
+                  </button>
+                )}
               </div>
 
               {/* Chat Body */}
@@ -1401,18 +1458,35 @@ export default function JobPrepLog() {
         {/* VIEW: ACTIVITY_RECOMMEND - 링커리어 스타일 */}
         {currentStep === 'ACTIVITY_RECOMMEND' && (
           <div className="animate-fade-in pb-20">
-            {/* Header */}
-            <div className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
+            {/* Navigation Bar */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+              <div className="flex items-center gap-3">
                 <button 
                   onClick={() => setCurrentStep('AI_CHAT')} 
-                  className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium text-gray-700"
                 >
-                  <ChevronRight className="w-5 h-5 text-[#111] rotate-180" />
+                  <ChevronRight className="w-4 h-4 rotate-180" />
+                  직무 다시 선택
                 </button>
-                <span className="text-sm text-gray-500">이전으로</span>
               </div>
-              
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentStep('ACTIVITY_RECOMMEND')} 
+                  className="px-4 py-2 rounded-xl bg-[#2F5233] text-white text-sm font-bold"
+                >
+                  🎯 활동추천
+                </button>
+                <button 
+                  onClick={() => setCurrentStep('RESULT')} 
+                  className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-bold text-[#111] transition-colors"
+                >
+                  📊 역량리포트
+                </button>
+              </div>
+            </div>
+            
+            {/* Header */}
+            <div className="mb-8">
               <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
                 <div>
                   <span className="text-[#2F5233] font-bold text-xs tracking-widest uppercase bg-[#E8F5E9] px-3 py-1 rounded-full">
@@ -1566,6 +1640,33 @@ export default function JobPrepLog() {
               const { main, scoreData } = getResults();
               return (
                 <>
+                  {/* Navigation Bar */}
+                  <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200">
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setCurrentStep('AI_CHAT')} 
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium text-gray-700"
+                      >
+                        <ChevronRight className="w-4 h-4 rotate-180" />
+                        직무 다시 선택
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setCurrentStep('ACTIVITY_RECOMMEND')} 
+                        className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-bold text-[#111] transition-colors"
+                      >
+                        🎯 활동추천
+                      </button>
+                      <button 
+                        onClick={() => setCurrentStep('RESULT')} 
+                        className="px-4 py-2 rounded-xl bg-[#2F5233] text-white text-sm font-bold"
+                      >
+                        📊 역량리포트
+                      </button>
+                    </div>
+                  </div>
+                  
                   {/* Header */}
                   <div className="flex flex-col md:flex-row justify-between items-end mb-12 pb-8 border-b border-gray-100">
                     <div>
